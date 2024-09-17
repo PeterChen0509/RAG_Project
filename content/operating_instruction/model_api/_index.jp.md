@@ -14,8 +14,8 @@ visible:
 # 検索でヒットする文字列の指定
 keywords:
   [
-    "API",
-    "REST API",
+  "API",
+  "REST API",
   ]
 ---
 

@@ -14,12 +14,12 @@ visible:
 # 検索でヒットする文字列の指定
 keywords:
   [
-    "API",
-    "REST API",
-    "API作成",
-    "API公開",
-    "デプロイ",
-	"予測API"
+  "API",
+  "REST API",
+  "API作成",
+  "API公開",
+  "デプロイ",
+  "予測API",
   ]
 ---
 
