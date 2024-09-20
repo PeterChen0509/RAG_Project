@@ -7,7 +7,7 @@ import pandas as pd
 
 root_dir = "/home/Preda/user/Sony_InternProj/content"
 vector_db_path = "/home/Preda/user/Sony_InternProj/data/vectordb"
-file_path = "/home/Preda/user/Sony_InternProj/data/マニュアルQA正解データ.xlsx"
+file_path = "/home/Preda/user/Sony_InternProj/data/20240918/マニュアルQA正解データ.xlsx"
 model = create_chat_model()
 
 keywords = filtered_keywords()
@@ -23,12 +23,36 @@ if vector_db_path:
 else:
     vector_db = create_vectorstore(chunks=all_chunks)
 
+def check_relevance(query, context, model):
+    # Check whether the text is relevant to the context
+    text = " ".join([con.page_content for con in context])
+    response = model(
+        messages=[
+             {"role": "system", "content": "あなたは、内容が関連しているかどうかを判断するアシスタントです。"},
+             {"role": "user", "content":  f"質問：{query}\nドキュメント：{text}\nこれらのドキュメントが質問に関連している場合は「関連」とのみ返し、関連していない場合は「無関係」とのみ返してください。その他の説明や追加情報は含めないでください。"}
+        ]
+    )
+    relevane_response = response.content.strip()
+    return "関連" in relevane_response
 
-def process_queries(file_path, model, keywords_lower):
+def generate_answer_based_on_relevance(row, model):
+    # Generate answer based on relevancy
+    if row["関連確認"]:
+        prompt = create_prompt(rrf_retriever(row["質問"], vector_db, model, top_k=5, top_f=10), row["質問"])
+        return generate_answer(prompt, model)
+    else:
+        apology = "申し訳ありませんが、検索ライブラリ内に質問に関連する参考資料が存在しません。以下は大規模モデルが直接生成した結果です。\n"
+        prompt = row["質問"]
+        answer = generate_answer(prompt, model)
+        return f"{apology}\n{answer}"
+
+def process_queries(file_path, model, vector_db, keywords_lower):
     df = pd.read_excel(file_path)
     df["仮想質問"] = df["質問"].apply(lambda x: query_generator(x, model)) # Relevant 4 queries
     df["関連情報"] = df["質問"].apply(lambda x: rrf_retriever(x, vector_db, model, top_k=5, top_f=10)) # Top-10 results
-    df["単純にRAGの答えを参考にする"] = df["質問"].apply(lambda x: generate_answer(create_prompt(rrf_retriever(x, vector_db, model, top_k=5, top_f=10), x), model))
+    df["関連確認"] = df.apply(lambda row: check_relevance(row["質問"], row["関連情報"], model), axis=1)
+    df["単純にRAGの答えを参考にする"] = df.apply(lambda row: generate_answer_based_on_relevance(row, model), axis=1)
+    # df["単純にRAGの答えを参考にする"] = df["質問"].apply(lambda x: generate_answer(create_prompt(rrf_retriever(x, vector_db, model, top_k=5, top_f=10), x), model))
     df["専門用語"] = df["単純にRAGの答えを参考にする"].apply(lambda x: extract_technical_terms(x)) # Extract technical terms from the primary answer
     df["マニュアルに説明されていない専門用語"] = df["専門用語"].apply(lambda x: [tech for tech in x if not any(keyword in tech.lower() for keyword in keywords_lower)]) # Filter out terms not explained in manual
 
@@ -45,9 +69,8 @@ def process_queries(file_path, model, keywords_lower):
     df["最終回答"] = df.apply(handle_unmatched, axis=1)
     return df
 
-
-df = process_queries(file_path, model, keywords_lower)
-df.to_excel("/home/Preda/user/Sony_InternProj/data/マニュアルQA(最終RAG).xlsx", index=False)
+df = process_queries(file_path, model, vector_db, keywords_lower)
+df.to_excel("/home/Preda/user/Sony_InternProj/data/20240918/マニュアルQA(最終RAG).xlsx", index=False)
 print(df.head())
 
 

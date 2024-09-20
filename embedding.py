@@ -7,6 +7,7 @@ import numpy as np
 import faiss
 from langchain_openai import AzureChatOpenAI, AzureOpenAIEmbeddings
 from langchain_community.vectorstores.faiss import FAISS
+from langchain.schema import Document
 
 load_dotenv()
 
@@ -136,32 +137,41 @@ def normalize_vectors(vectors):
 def reciprocal_rank_fusion(results: List[List[Any]], k: int = 60) -> List[Any]:
     # Calculate reciprocal rank fusion for multiple queries
     fusion_scores = {}
+    doc_dict = {}
     for docs in results:
-        for rank, doc in enumerate(docs):
+        for rank,doc in enumerate(docs):
             doc_str = f"{doc.metadata.get('source_path', '')}_{doc.metadata.get('chunk_id', '')}"
+            if doc_str not in doc_dict:
+                doc_dict[doc_str] = doc
             if doc_str not in fusion_scores:
                 fusion_scores[doc_str] = 0
-            fusion_scores[doc_str] += 1 / (rank+k)
+            fusion_scores[doc_str] += 1/(rank+k)
+
+    # Debugging: Check the number of unique documents before sorting
+    print(f"Unique documents before sorting: {len(fusion_scores)}")
+
     reranked_results = sorted(fusion_scores.items(), key=lambda x: x[1], reverse=True)
     reranked_docs = []
+    seen = set()
     for doc_str, score in reranked_results:
-        for docs in results:
-            for doc in docs:
-                if f"{doc.metadata.get('source_path', '')}_{doc.metadata.get('chunk_id', '')}" == doc_str:
-                    reranked_docs.append(doc)
-                    break
+        if doc_str not in seen:
+            seen.add(doc_str)
+            reranked_docs.append(doc_dict[doc_str])
+    print(f"Number of documents after reranking: {len(reranked_docs)}")
     return reranked_docs
 
-def rrf_retriever(query, vectordb, model, top_k: int = 5, top_f: int = 10):
+def rrf_retriever(query, vectordb, model, top_k: int = 20, top_f: int = 10):
     # Retrieve documents using FAISS for each similar query and rerank using RRF
     print(f"Start retrieving documents for query: {query}")
     start_time = time.time()
 
     queries = query_generator(query, model)
     results = []
+    embedding_model = create_embeddings_model()
+
     for idx, q in enumerate(queries):
         print(f"Processing query {idx+1}/{len(queries)}: {q}")
-        query_vector = create_embeddings_model().embed_query(q)
+        query_vector = embedding_model.embed_query(q)
         query_vector = np.array(query_vector).astype('float32')
         query_vector = normalize_vectors(query_vector)
 
@@ -171,14 +181,11 @@ def rrf_retriever(query, vectordb, model, top_k: int = 5, top_f: int = 10):
 
         print(f"Search completed in {search_end_time - search_start_time:.2f} seconds")
         results.append(result)
+
     reranked_results = reciprocal_rank_fusion(results, k=top_k)
     end_time = time.time()
     print(f"Document retrieval completed in {end_time - start_time:.2f} seconds")
     return reranked_results[:top_f]
-
-# def query(query, vectordb):
-#     # Query the vector datastore using RAG Fusion
-#     reranked_doc = rrf_retriever(query, vectordb)
 
 def create_prompt(documents: List, query: str) -> str:
     # Create a prompt for the user to answer a question
@@ -205,3 +212,4 @@ def generate_answer(prompt, model):
         ]
     )
     return response.content
+

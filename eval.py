@@ -67,7 +67,7 @@ def get_ragas_score(
 
 def meteor_score(ground_truth, generated):
     # Calculate METEOR score
-    tokenizer = BertJapaneseTokenizer.from_pretraned("cl-tohoku/bert-base-japanese-whole-word-masking")
+    tokenizer = BertJapaneseTokenizer.from_pretrained("cl-tohoku/bert-base-japanese-whole-word-masking")
     tokenized_ground_truth = [[tokenizer.tokenize(ref) for ref in refs] for refs in ground_truth]
     tokenized_answer = [tokenizer.tokenize(ans) for ans in generated]
     meteor_scores = [meteor_score(refs, ans) for refs, ans in zip(tokenized_ground_truth, tokenized_answer)]
