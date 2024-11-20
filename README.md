@@ -1,4 +1,4 @@
-# Sony_InternProj
+# InternProject
 **Basic RAG**
 
 nano.ipynb に対応
